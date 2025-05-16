@@ -1,6 +1,5 @@
 // n8n types are resolved at runtime in the n8n environment
-import type { INodeType, INodeTypeDescription, INodeExecutionData, IExecuteFunctions } from 'n8n-workflow';
-import type { NodeOperationError } from 'n8n-workflow';
+import { INodeType, INodeTypeDescription, INodeExecutionData, IExecuteFunctions, NodeOperationError, NodeConnectionType } from 'n8n-workflow';
 // Use require for EventSource for compatibility
 const EventSource = require('eventsource');
 
@@ -30,68 +29,55 @@ export class McpClient implements INodeType {
 		name: 'mcpClient',
 		group: ['input'],
 		version: 1,
-		description: 'Streams tool definitions from a 4Runr MCP Server using SSE',
+		description: 'Streams tool definitions from a 4Runr MCP Server via SSE. Built to power dynamic AI agents using the MCP protocol.',
 		defaults: {
 			name: '4Runr MCP Client',
 			color: '#00b894',
 		},
 		inputs: [],
-		outputs: ['main'],
+		outputs: [NodeConnectionType.Main],
 		icon: 'fa:plug',
-		isTool: true,
 		usableAsTool: true,
 		credentials: [
 			{
 				name: 'McpClientApi',
 				required: true,
 				displayName: '4Runr MCP Access',
-				displayOptions: {
-					show: {
-						authentication: ['apiKey'],
-					},
-				},
-				fields: [
-					{
-						displayName: 'SSE URL',
-						name: 'sseUrl',
-						type: 'string',
-						default: '',
-						description: 'The URL of the MCP SSE endpoint (e.g., https://mcp-server/mcp-events)',
-						required: true,
-					},
-					{
-						displayName: 'SSE Connection Timeout',
-						name: 'sseTimeout',
-						type: 'number',
-						default: 60000,
-						description: 'Timeout in milliseconds for SSE connection (default: 60000)',
-						required: false,
-					},
-					{
-						displayName: 'Messages Post Endpoint',
-						name: 'messageEndpoint',
-						type: 'string',
-						default: '',
-						description: 'The URL for posting messages back to the MCP server (e.g., https://mcp-server/mcp/message)',
-						required: true,
-					},
-					{
-						displayName: 'Additional Headers',
-						name: 'headers',
-						type: 'json',
-						default: '{}',
-						description: 'Additional headers to send with the SSE connection (e.g., {"X-API-Key": "Test12345"})',
-						required: false,
-					},
-				],
 			},
 		],
-		properties: [],
+		properties: [
+			{
+				displayName: 'Tool Type Filter',
+				name: 'toolType',
+				type: 'options',
+				options: [
+					{
+						name: 'All Tools',
+						value: 'all',
+					},
+					{
+						name: 'Search Tools',
+						value: 'search_tool',
+					},
+					{
+						name: 'Update Tools',
+						value: 'update_tool',
+					},
+					{
+						name: 'Report Tools',
+						value: 'report_tool',
+					},
+				],
+				default: 'all',
+				description: 'Filter tools by their type',
+			},
+		],
 	};
 
 	async execute(this: IExecuteFunctions): Promise<INodeExecutionData[][]> {
 		const credentials = await this.getCredentials('McpClientApi') as McpClientApiCredentials;
-		const { sseUrl, sseTimeout, headers } = credentials;
+		const { sseUrl, sseTimeout, headers, messageEndpoint } = credentials;
+		const toolType = this.getNodeParameter('toolType', 0) as string;
 
 		console.log(`[McpClient] Connecting to SSE: ${sseUrl}`);
 
@@ -138,14 +124,20 @@ export class McpClient implements INodeType {
 				try {
 					const parsed = JSON.parse(event.data);
 					if (parsed.tools && Array.isArray(parsed.tools)) {
-						const tools: ToolDefinition[] = parsed.tools.map((tool: any) => ({
+						let tools: ToolDefinition[] = parsed.tools.map((tool: any) => ({
 							name: tool.name,
 							description: tool.description,
 							parameters: tool.parameters || {},
 						}));
+
+						// Filter tools by type if specified
+						if (toolType !== 'all') {
+							tools = tools.filter(tool => tool.name.includes(toolType));
+						}
+
 						console.log(`[McpClient] Emitting ${tools.length} tools`);
 						eventSource.close();
-						resolve([this.helpers.returnJsonArray(tools)]);
+						resolve([this.helpers.returnJsonArray(tools as any)]);
 					} else {
 						console.warn('[McpClient] No tools array in event data');
 					}

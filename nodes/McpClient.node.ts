@@ -172,6 +172,10 @@ export class McpClient implements INodeType {
 	}
 
 	// --- Tool Execution Logic ---
+	/**
+	 * Executes a tool call by POSTing to the MCP server's message endpoint.
+	 * Throws a clear error if toolName or parameters are missing/invalid.
+	 */
 	async executeToolCall(
 		context: IExecuteFunctions,
 		toolName: string,
@@ -179,6 +183,12 @@ export class McpClient implements INodeType {
 		credentials: McpClientApiCredentials
 	): Promise<any> {
 		const { messageEndpoint, headers } = credentials;
+		if (!toolName || typeof toolName !== 'string') {
+			throw new NodeOperationError(context.getNode(), 'Tool name is required and must be a string.');
+		}
+		if (!parameters || typeof parameters !== 'object') {
+			throw new NodeOperationError(context.getNode(), 'Tool parameters are required and must be an object.');
+		}
 		const payload = {
 			toolCall: {
 				toolName,

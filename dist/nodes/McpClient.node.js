@@ -58,6 +58,31 @@ class McpClient {
                     default: 'all',
                     description: 'Filter tools by their type',
                 },
+                {
+                    displayName: 'Tool Name',
+                    name: 'toolName',
+                    type: 'string',
+                    default: '',
+                    description: 'Name of the tool to execute (as received from the server)',
+                    required: false,
+                },
+                {
+                    displayName: 'Tool Parameters',
+                    name: 'toolParameters',
+                    type: 'json',
+                    default: '{}',
+                    description: 'Parameters for the selected tool (as JSON)',
+                    required: false,
+                },
+                // Placeholder for future: tool name mapping, aliases, etc.
+                {
+                    displayName: 'Tool Name Mapping (Optional)',
+                    name: 'toolNameMapping',
+                    type: 'json',
+                    default: '{}',
+                    description: 'Optional mapping of tool names to aliases (e.g., {"calendar.check_availability": "Check Availability"})',
+                    required: false,
+                },
             ],
         };
     }
@@ -126,8 +151,18 @@ class McpClient {
         });
     }
     // --- Tool Execution Logic ---
+    /**
+     * Executes a tool call by POSTing to the MCP server's message endpoint.
+     * Throws a clear error if toolName or parameters are missing/invalid.
+     */
     async executeToolCall(context, toolName, parameters, credentials) {
         const { messageEndpoint, headers } = credentials;
+        if (!toolName || typeof toolName !== 'string') {
+            throw new n8n_workflow_1.NodeOperationError(context.getNode(), 'Tool name is required and must be a string.');
+        }
+        if (!parameters || typeof parameters !== 'object') {
+            throw new n8n_workflow_1.NodeOperationError(context.getNode(), 'Tool parameters are required and must be an object.');
+        }
         const payload = {
             toolCall: {
                 toolName,

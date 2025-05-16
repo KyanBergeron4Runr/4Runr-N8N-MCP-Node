@@ -1,6 +1,6 @@
 {
   "name": "n8n-nodes-mcp-client",
-  "version": "0.2.4",
+  "version": "0.2.5",
   "description": "4Runr's custom MCP Client node for n8n — connects to a self-hosted MCP server via SSE and streams tool definitions to n8n AI Agents.",
   "author": "4Runr <team@4runr.com>",
   "license": "MIT",

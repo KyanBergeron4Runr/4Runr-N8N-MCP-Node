@@ -48,29 +48,23 @@ export class McpClient implements INodeType {
 		],
 		properties: [
 			{
-				displayName: 'Tool Type Filter',
-				name: 'toolType',
+				displayName: 'Node Mode',
+				name: 'nodeMode',
 				type: 'options',
 				options: [
 					{
-						name: 'All Tools',
-						value: 'all',
+						name: 'Discover Tools',
+						value: 'discover',
+						description: 'Stream and list available tools from the MCP server',
 					},
 					{
-						name: 'Search Tools',
-						value: 'search_tool',
-					},
-					{
-						name: 'Update Tools',
-						value: 'update_tool',
-					},
-					{
-						name: 'Report Tools',
-						value: 'report_tool',
+						name: 'Execute Tool',
+						value: 'execute',
+						description: 'Execute a tool on the MCP server',
 					},
 				],
-				default: 'all',
-				description: 'Filter tools by their type',
+				default: 'discover',
+				description: 'Choose whether to discover tools or execute a tool',
 			},
 			{
 				displayName: 'Tool Name',
@@ -79,6 +73,11 @@ export class McpClient implements INodeType {
 				default: '',
 				description: 'Name of the tool to execute (as received from the server)',
 				required: false,
+				displayOptions: {
+					show: {
+						nodeMode: ['execute'],
+					},
+				},
 			},
 			{
 				displayName: 'Tool Parameters',
@@ -87,8 +86,12 @@ export class McpClient implements INodeType {
 				default: '{}',
 				description: 'Parameters for the selected tool (as JSON)',
 				required: false,
+				displayOptions: {
+					show: {
+						nodeMode: ['execute'],
+					},
+				},
 			},
-			// Placeholder for future: tool name mapping, aliases, etc.
 			{
 				displayName: 'Tool Name Mapping (Optional)',
 				name: 'toolNameMapping',
@@ -103,103 +106,93 @@ export class McpClient implements INodeType {
 	async execute(this: IExecuteFunctions): Promise<INodeExecutionData[][]> {
 		const credentials = await this.getCredentials('McpClientApi') as McpClientApiCredentials;
 		const { sseUrl, sseTimeout, headers, messageEndpoint } = credentials;
-		const toolType = this.getNodeParameter('toolType', 0) as string;
+		const nodeMode = this.getNodeParameter('nodeMode', 0) as string;
 
 		console.log(`[McpClient] Starting execution with config:`, {
 			sseUrl,
 			sseTimeout,
 			messageEndpoint,
-			toolType,
+			nodeMode,
 			hasHeaders: !!headers
 		});
 
-		return new Promise((resolve, reject) => {
-			const eventSourceOptions: any = {};
-			
-			// Add headers if provided
-			if (headers) {
-				try {
-					const parsedHeaders = typeof headers === 'string' ? JSON.parse(headers) : headers;
-					eventSourceOptions.headers = parsedHeaders;
-					console.log('[McpClient] Using headers:', parsedHeaders);
-				} catch (err) {
-					console.error('[McpClient] Failed to parse headers:', err);
-					throw new NodeOperationError(this.getNode(), 'Failed to parse headers: ' + (err as Error).message);
-				}
-			}
-
-			console.log(`[McpClient] Connecting to SSE: ${sseUrl}`);
-			const eventSource = new EventSource(sseUrl, eventSourceOptions);
-
-			let timeoutId: NodeJS.Timeout | undefined;
-			if (sseTimeout) {
-				timeoutId = setTimeout(() => {
-					console.error('[McpClient] SSE connection timed out after', sseTimeout, 'ms');
-					eventSource.close();
-					reject(new NodeOperationError(this.getNode(), `SSE connection timed out after ${sseTimeout}ms`));
-				}, sseTimeout);
-			}
-
-			eventSource.onopen = () => {
-				if (timeoutId) clearTimeout(timeoutId);
-				console.log('[McpClient] SSE connection opened successfully');
-			};
-
-			eventSource.onerror = (err: unknown) => {
-				console.error('[McpClient] SSE connection error:', err);
-				eventSource.close();
-				reject(new NodeOperationError(this.getNode(), 'Failed to connect to SSE endpoint: ' + (err as Error).message));
-			};
-
-			// Listen for all events for debugging
-			eventSource.onmessage = (event: MessageEvent) => {
-				console.log('[McpClient] Received message event:', {
-					type: event.type,
-					data: event.data,
-					lastEventId: event.lastEventId
-				});
-			};
-
-			eventSource.addEventListener('tools', (event: MessageEvent) => {
-				console.log('[McpClient] Received tools event:', {
-					data: event.data,
-					lastEventId: event.lastEventId
-				});
-
-				try {
-					const parsed = JSON.parse(event.data);
-					console.log('[McpClient] Parsed tools data:', parsed);
-
-					if (!parsed.tools || !Array.isArray(parsed.tools)) {
-						throw new Error('Invalid tools data: missing or invalid tools array');
+		if (nodeMode === 'discover') {
+			return new Promise((resolve, reject) => {
+				const eventSourceOptions: any = {};
+				if (headers) {
+					try {
+						const parsedHeaders = typeof headers === 'string' ? JSON.parse(headers) : headers;
+						eventSourceOptions.headers = parsedHeaders;
+						console.log('[McpClient] Using headers:', parsedHeaders);
+					} catch (err) {
+						console.error('[McpClient] Failed to parse headers:', err);
+						throw new NodeOperationError(this.getNode(), 'Failed to parse headers: ' + (err as Error).message);
 					}
-
-					let tools: ToolDefinition[] = parsed.tools.map((tool: any) => {
-						console.log('[McpClient] Processing tool:', tool);
-						return {
-							name: tool.name,
-							description: tool.description,
-							parameters: tool.parameters || {},
-						};
+				}
+				console.log(`[McpClient] Connecting to SSE: ${sseUrl}`);
+				const eventSource = new EventSource(sseUrl, eventSourceOptions);
+				let timeoutId: NodeJS.Timeout | undefined;
+				if (sseTimeout) {
+					timeoutId = setTimeout(() => {
+						console.error('[McpClient] SSE connection timed out after', sseTimeout, 'ms');
+						eventSource.close();
+						reject(new NodeOperationError(this.getNode(), `SSE connection timed out after ${sseTimeout}ms`));
+					}, sseTimeout);
+				}
+				eventSource.onopen = () => {
+					if (timeoutId) clearTimeout(timeoutId);
+					console.log('[McpClient] SSE connection opened successfully');
+				};
+				eventSource.onerror = (err: unknown) => {
+					console.error('[McpClient] SSE connection error:', err);
+					eventSource.close();
+					reject(new NodeOperationError(this.getNode(), 'Failed to connect to SSE endpoint: ' + (err as Error).message));
+				};
+				eventSource.onmessage = (event: MessageEvent) => {
+					console.log('[McpClient] Received message event:', {
+						type: event.type,
+						data: event.data,
+						lastEventId: event.lastEventId
 					});
-
-					// Filter tools by type if specified
-					if (toolType !== 'all') {
-						const originalCount = tools.length;
-						tools = tools.filter(tool => tool.name.includes(toolType));
-						console.log(`[McpClient] Filtered tools from ${originalCount} to ${tools.length} for type: ${toolType}`);
+				};
+				eventSource.addEventListener('tools', (event: MessageEvent) => {
+					console.log('[McpClient] Received tools event:', {
+						data: event.data,
+						lastEventId: event.lastEventId
+					});
+					try {
+						const parsed = JSON.parse(event.data);
+						console.log('[McpClient] Parsed tools data:', parsed);
+						if (!parsed.tools || !Array.isArray(parsed.tools)) {
+							throw new Error('Invalid tools data: missing or invalid tools array');
+						}
+						let tools: ToolDefinition[] = parsed.tools.map((tool: any) => {
+							console.log('[McpClient] Processing tool:', tool);
+							return {
+								name: tool.name,
+								description: tool.description,
+								parameters: tool.parameters || {},
+							};
+						});
+						console.log(`[McpClient] Emitting ${tools.length} tools:`, tools);
+						eventSource.close();
+						resolve([this.helpers.returnJsonArray(tools as any)]);
+					} catch (err) {
+						console.error('[McpClient] Failed to process tools event:', err);
+						eventSource.close();
+						reject(new NodeOperationError(this.getNode(), 'Failed to process tools event: ' + (err as Error).message));
 					}
-
-					console.log(`[McpClient] Emitting ${tools.length} tools:`, tools);
-					eventSource.close();
-					resolve([this.helpers.returnJsonArray(tools as any)]);
-				} catch (err) {
-					console.error('[McpClient] Failed to process tools event:', err);
-					eventSource.close();
-					reject(new NodeOperationError(this.getNode(), 'Failed to process tools event: ' + (err as Error).message));
-				}
+				});
 			});
-		});
+		} else if (nodeMode === 'execute') {
+			const toolName = this.getNodeParameter('toolName', 0) as string;
+			const toolParameters = this.getNodeParameter('toolParameters', 0) as any;
+			console.log('[McpClient] Executing tool:', { toolName, toolParameters });
+			const result = await McpClient.executeToolCall(this, toolName, toolParameters, credentials);
+			return [this.helpers.returnJsonArray([result])];
+		} else {
+			throw new NodeOperationError(this.getNode(), `Unknown node mode: ${nodeMode}`);
+		}
 	}
 
 	// --- Tool Execution Logic ---
@@ -207,47 +200,41 @@ export class McpClient implements INodeType {
 	 * Executes a tool call by POSTing to the MCP server's message endpoint.
 	 * Throws a clear error if toolName or parameters are missing/invalid.
 	 */
-	async executeToolCall(
+	static async executeToolCall(
 		context: IExecuteFunctions,
 		toolName: string,
 		parameters: Record<string, any>,
 		credentials: McpClientApiCredentials
 	): Promise<any> {
 		const { messageEndpoint, headers } = credentials;
-		
 		console.log('[McpClient] Executing tool call:', {
 			toolName,
 			parameters,
 			messageEndpoint,
 			hasHeaders: !!headers
 		});
-
 		if (!toolName || typeof toolName !== 'string') {
 			throw new NodeOperationError(context.getNode(), 'Tool name is required and must be a string.');
 		}
 		if (!parameters || typeof parameters !== 'object') {
 			throw new NodeOperationError(context.getNode(), 'Tool parameters are required and must be an object.');
 		}
-
 		const payload = {
 			toolCall: {
 				toolName,
 				parameters,
 			},
 		};
-
 		console.log('[McpClient] Preparing POST request:', {
 			url: messageEndpoint,
 			payload
 		});
-
 		const axiosConfig: any = {
 			headers: {
 				'Content-Type': 'application/json',
 				...(headers ? (typeof headers === 'string' ? JSON.parse(headers) : headers) : {}),
 			},
 		};
-
 		try {
 			console.log('[McpClient] Sending POST request...');
 			const response = await axios.post(messageEndpoint, payload, axiosConfig);
@@ -264,7 +251,6 @@ export class McpClient implements INodeType {
 				status: error.response?.status,
 				statusText: error.response?.statusText
 			});
-
 			let errorMessage = 'Tool call failed: ';
 			if (error.response?.data?.message) {
 				errorMessage += error.response.data.message;
@@ -273,7 +259,6 @@ export class McpClient implements INodeType {
 			} else {
 				errorMessage += error.message;
 			}
-
 			throw new NodeOperationError(context.getNode(), errorMessage);
 		}
 	}

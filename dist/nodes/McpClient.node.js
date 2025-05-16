@@ -1,8 +1,12 @@
 "use strict";
+var __importDefault = (this && this.__importDefault) || function (mod) {
+    return (mod && mod.__esModule) ? mod : { "default": mod };
+};
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.McpClient = void 0;
 // n8n types are resolved at runtime in the n8n environment
 const n8n_workflow_1 = require("n8n-workflow");
+const axios_1 = __importDefault(require("axios"));
 // Use require for EventSource for compatibility
 const EventSource = require('eventsource');
 class McpClient {
@@ -75,22 +79,18 @@ class McpClient {
                 }
             }
             const eventSource = new EventSource(sseUrl, eventSourceOptions);
-            // Set timeout if provided
+            let timeoutId;
             if (sseTimeout) {
-                const timeoutId = setTimeout(() => {
+                timeoutId = setTimeout(() => {
                     eventSource.close();
                     reject(new n8n_workflow_1.NodeOperationError(this.getNode(), 'SSE connection timed out'));
                 }, sseTimeout);
-                eventSource.onopen = () => {
+            }
+            eventSource.onopen = () => {
+                if (timeoutId)
                     clearTimeout(timeoutId);
-                    console.log('[McpClient] SSE connection opened');
-                };
-            }
-            else {
-                eventSource.onopen = () => {
-                    console.log('[McpClient] SSE connection opened');
-                };
-            }
+                console.log('[McpClient] SSE connection opened');
+            };
             eventSource.onerror = (err) => {
                 console.error('[McpClient] SSE connection error', err);
                 eventSource.close();
@@ -120,10 +120,34 @@ class McpClient {
                 }
                 catch (err) {
                     console.error('[McpClient] Failed to parse tools event', err);
+                    reject(new n8n_workflow_1.NodeOperationError(this.getNode(), 'Failed to parse tools event: ' + err.message));
                 }
             });
-            // Ignore all other event types (e.g., ping)
         });
+    }
+    // --- Tool Execution Logic ---
+    async executeToolCall(context, toolName, parameters, credentials) {
+        const { messageEndpoint, headers } = credentials;
+        const payload = {
+            toolCall: {
+                toolName,
+                parameters,
+            },
+        };
+        const axiosConfig = {
+            headers: {
+                'Content-Type': 'application/json',
+                ...(headers ? (typeof headers === 'string' ? JSON.parse(headers) : headers) : {}),
+            },
+        };
+        try {
+            const response = await axios_1.default.post(messageEndpoint, payload, axiosConfig);
+            return response.data;
+        }
+        catch (error) {
+            console.error('[McpClient] Tool call POST error:', error?.response?.data || error.message);
+            throw new n8n_workflow_1.NodeOperationError(context.getNode(), 'Tool call failed: ' + (error?.response?.data?.message || error.message));
+        }
     }
 }
 exports.McpClient = McpClient;

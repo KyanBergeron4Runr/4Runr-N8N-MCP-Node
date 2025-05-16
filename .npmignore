@@ -1,0 +1,6 @@
+nodes/
+*.ts
+*.ts.map
+tsconfig.json
+README.md
+!dist/ 

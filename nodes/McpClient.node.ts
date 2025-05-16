@@ -1,5 +1,6 @@
 // n8n types are resolved at runtime in the n8n environment
 import { INodeType, INodeTypeDescription, INodeExecutionData, IExecuteFunctions, NodeOperationError, NodeConnectionType } from 'n8n-workflow';
+import axios from 'axios';
 // Use require for EventSource for compatibility
 const EventSource = require('eventsource');
 
@@ -96,22 +97,18 @@ export class McpClient implements INodeType {
 
 			const eventSource = new EventSource(sseUrl, eventSourceOptions);
 
-			// Set timeout if provided
+			let timeoutId: NodeJS.Timeout | undefined;
 			if (sseTimeout) {
-				const timeoutId = setTimeout(() => {
+				timeoutId = setTimeout(() => {
 					eventSource.close();
 					reject(new NodeOperationError(this.getNode(), 'SSE connection timed out'));
 				}, sseTimeout);
-
-				eventSource.onopen = () => {
-					clearTimeout(timeoutId);
-					console.log('[McpClient] SSE connection opened');
-				};
-			} else {
-				eventSource.onopen = () => {
-					console.log('[McpClient] SSE connection opened');
-				};
 			}
+
+			eventSource.onopen = () => {
+				if (timeoutId) clearTimeout(timeoutId);
+				console.log('[McpClient] SSE connection opened');
+			};
 
 			eventSource.onerror = (err: unknown) => {
 				console.error('[McpClient] SSE connection error', err);
@@ -143,10 +140,37 @@ export class McpClient implements INodeType {
 					}
 				} catch (err) {
 					console.error('[McpClient] Failed to parse tools event', err);
+					reject(new NodeOperationError(this.getNode(), 'Failed to parse tools event: ' + (err as Error).message));
 				}
 			});
-
-			// Ignore all other event types (e.g., ping)
 		});
+	}
+
+	// --- Tool Execution Logic ---
+	async executeToolCall(
+		toolName: string,
+		parameters: Record<string, any>,
+		credentials: McpClientApiCredentials
+	): Promise<any> {
+		const { messageEndpoint, headers } = credentials;
+		const payload = {
+			toolCall: {
+				toolName,
+				parameters,
+			},
+		};
+		const axiosConfig: any = {
+			headers: {
+				'Content-Type': 'application/json',
+				...(headers ? (typeof headers === 'string' ? JSON.parse(headers) : headers) : {}),
+			},
+		};
+		try {
+			const response = await axios.post(messageEndpoint, payload, axiosConfig);
+			return response.data;
+		} catch (error: any) {
+			console.error('[McpClient] Tool call POST error:', error?.response?.data || error.message);
+			throw new NodeOperationError(this.getNode(), 'Tool call failed: ' + (error?.response?.data?.message || error.message));
+		}
 	}
 } 

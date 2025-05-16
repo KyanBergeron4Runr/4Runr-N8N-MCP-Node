@@ -38,7 +38,8 @@
     "sse"
   ],
   "files": [
-    "dist/"
+    "dist/",
+    "images/"
   ],
   "publishConfig": {
     "access": "public"

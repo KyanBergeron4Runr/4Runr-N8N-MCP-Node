@@ -37,7 +37,7 @@ export class McpClient implements INodeType {
 		},
 		inputs: [],
 		outputs: [NodeConnectionType.Main],
-		icon: 'fa:plug',
+		icon: 'file:images/n8n4Runr.png',
 		usableAsTool: true,
 		credentials: [
 			{

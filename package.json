@@ -4,7 +4,7 @@
   "description": "4Runr's custom MCP Client node for n8n — connects to a self-hosted MCP server via SSE and streams tool definitions to n8n AI Agents.",
   "author": "4Runr <team@4runr.com>",
   "license": "MIT",
-  "main": "dist/nodes/McpClient/McpClient.node.js",
+  "main": "dist/nodes/McpClient.node.js",
   "scripts": {
     "build": "tsc"
   },
@@ -18,12 +18,15 @@
   },
   "n8n": {
     "nodes": [
-      "./dist/nodes/McpClient/McpClient.node.js"
+      "dist/nodes/McpClient.node.js"
+    ],
+    "credentials": [
+      "dist/credentials/McpClientApi.credentials.js"
     ]
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/KyanBergeron4Runr/4Runr-N8N-MCP-Node.git"
+    "url": "https://github.com/KyanBergeron4Runr/n8n-nodes-mcp-client.git"
   },
   "keywords": [
     "n8n",
@@ -36,5 +39,8 @@
   ],
   "files": [
     "dist/"
-  ]
+  ],
+  "publishConfig": {
+    "access": "public"
+  }
 }

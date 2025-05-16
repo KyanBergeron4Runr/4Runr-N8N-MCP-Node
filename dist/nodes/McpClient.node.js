@@ -90,7 +90,13 @@ class McpClient {
         const credentials = await this.getCredentials('McpClientApi');
         const { sseUrl, sseTimeout, headers, messageEndpoint } = credentials;
         const toolType = this.getNodeParameter('toolType', 0);
-        console.log(`[McpClient] Connecting to SSE: ${sseUrl}`);
+        console.log(`[McpClient] Starting execution with config:`, {
+            sseUrl,
+            sseTimeout,
+            messageEndpoint,
+            toolType,
+            hasHeaders: !!headers
+        });
         return new Promise((resolve, reject) => {
             const eventSourceOptions = {};
             // Add headers if provided
@@ -98,54 +104,74 @@ class McpClient {
                 try {
                     const parsedHeaders = typeof headers === 'string' ? JSON.parse(headers) : headers;
                     eventSourceOptions.headers = parsedHeaders;
+                    console.log('[McpClient] Using headers:', parsedHeaders);
                 }
                 catch (err) {
                     console.error('[McpClient] Failed to parse headers:', err);
+                    throw new n8n_workflow_1.NodeOperationError(this.getNode(), 'Failed to parse headers: ' + err.message);
                 }
             }
+            console.log(`[McpClient] Connecting to SSE: ${sseUrl}`);
             const eventSource = new EventSource(sseUrl, eventSourceOptions);
             let timeoutId;
             if (sseTimeout) {
                 timeoutId = setTimeout(() => {
+                    console.error('[McpClient] SSE connection timed out after', sseTimeout, 'ms');
                     eventSource.close();
-                    reject(new n8n_workflow_1.NodeOperationError(this.getNode(), 'SSE connection timed out'));
+                    reject(new n8n_workflow_1.NodeOperationError(this.getNode(), `SSE connection timed out after ${sseTimeout}ms`));
                 }, sseTimeout);
             }
             eventSource.onopen = () => {
                 if (timeoutId)
                     clearTimeout(timeoutId);
-                console.log('[McpClient] SSE connection opened');
+                console.log('[McpClient] SSE connection opened successfully');
             };
             eventSource.onerror = (err) => {
-                console.error('[McpClient] SSE connection error', err);
+                console.error('[McpClient] SSE connection error:', err);
                 eventSource.close();
-                reject(new n8n_workflow_1.NodeOperationError(this.getNode(), 'Failed to connect to SSE endpoint'));
+                reject(new n8n_workflow_1.NodeOperationError(this.getNode(), 'Failed to connect to SSE endpoint: ' + err.message));
+            };
+            // Listen for all events for debugging
+            eventSource.onmessage = (event) => {
+                console.log('[McpClient] Received message event:', {
+                    type: event.type,
+                    data: event.data,
+                    lastEventId: event.lastEventId
+                });
             };
             eventSource.addEventListener('tools', (event) => {
-                console.log('[McpClient] Received tools event:', event.data);
+                console.log('[McpClient] Received tools event:', {
+                    data: event.data,
+                    lastEventId: event.lastEventId
+                });
                 try {
                     const parsed = JSON.parse(event.data);
-                    if (parsed.tools && Array.isArray(parsed.tools)) {
-                        let tools = parsed.tools.map((tool) => ({
+                    console.log('[McpClient] Parsed tools data:', parsed);
+                    if (!parsed.tools || !Array.isArray(parsed.tools)) {
+                        throw new Error('Invalid tools data: missing or invalid tools array');
+                    }
+                    let tools = parsed.tools.map((tool) => {
+                        console.log('[McpClient] Processing tool:', tool);
+                        return {
                             name: tool.name,
                             description: tool.description,
                             parameters: tool.parameters || {},
-                        }));
-                        // Filter tools by type if specified
-                        if (toolType !== 'all') {
-                            tools = tools.filter(tool => tool.name.includes(toolType));
-                        }
-                        console.log(`[McpClient] Emitting ${tools.length} tools`);
-                        eventSource.close();
-                        resolve([this.helpers.returnJsonArray(tools)]);
+                        };
+                    });
+                    // Filter tools by type if specified
+                    if (toolType !== 'all') {
+                        const originalCount = tools.length;
+                        tools = tools.filter(tool => tool.name.includes(toolType));
+                        console.log(`[McpClient] Filtered tools from ${originalCount} to ${tools.length} for type: ${toolType}`);
                     }
-                    else {
-                        console.warn('[McpClient] No tools array in event data');
-                    }
+                    console.log(`[McpClient] Emitting ${tools.length} tools:`, tools);
+                    eventSource.close();
+                    resolve([this.helpers.returnJsonArray(tools)]);
                 }
                 catch (err) {
-                    console.error('[McpClient] Failed to parse tools event', err);
-                    reject(new n8n_workflow_1.NodeOperationError(this.getNode(), 'Failed to parse tools event: ' + err.message));
+                    console.error('[McpClient] Failed to process tools event:', err);
+                    eventSource.close();
+                    reject(new n8n_workflow_1.NodeOperationError(this.getNode(), 'Failed to process tools event: ' + err.message));
                 }
             });
         });
@@ -157,6 +183,12 @@ class McpClient {
      */
     async executeToolCall(context, toolName, parameters, credentials) {
         const { messageEndpoint, headers } = credentials;
+        console.log('[McpClient] Executing tool call:', {
+            toolName,
+            parameters,
+            messageEndpoint,
+            hasHeaders: !!headers
+        });
         if (!toolName || typeof toolName !== 'string') {
             throw new n8n_workflow_1.NodeOperationError(context.getNode(), 'Tool name is required and must be a string.');
         }
@@ -169,6 +201,10 @@ class McpClient {
                 parameters,
             },
         };
+        console.log('[McpClient] Preparing POST request:', {
+            url: messageEndpoint,
+            payload
+        });
         const axiosConfig = {
             headers: {
                 'Content-Type': 'application/json',
@@ -176,12 +212,33 @@ class McpClient {
             },
         };
         try {
+            console.log('[McpClient] Sending POST request...');
             const response = await axios_1.default.post(messageEndpoint, payload, axiosConfig);
+            console.log('[McpClient] Received response:', {
+                status: response.status,
+                statusText: response.statusText,
+                data: response.data
+            });
             return response.data;
         }
         catch (error) {
-            console.error('[McpClient] Tool call POST error:', error?.response?.data || error.message);
-            throw new n8n_workflow_1.NodeOperationError(context.getNode(), 'Tool call failed: ' + (error?.response?.data?.message || error.message));
+            console.error('[McpClient] Tool call failed:', {
+                error: error.message,
+                response: error.response?.data,
+                status: error.response?.status,
+                statusText: error.response?.statusText
+            });
+            let errorMessage = 'Tool call failed: ';
+            if (error.response?.data?.message) {
+                errorMessage += error.response.data.message;
+            }
+            else if (error.response?.statusText) {
+                errorMessage += `${error.response.status} ${error.response.statusText}`;
+            }
+            else {
+                errorMessage += error.message;
+            }
+            throw new n8n_workflow_1.NodeOperationError(context.getNode(), errorMessage);
         }
     }
 }

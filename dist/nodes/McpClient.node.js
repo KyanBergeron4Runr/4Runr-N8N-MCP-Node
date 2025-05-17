@@ -64,6 +64,9 @@ class McpClient {
                             nodeMode: ['execute'],
                         },
                     },
+                    typeOptions: {
+                        allowExpression: true,
+                    },
                 },
                 {
                     displayName: 'Tool Parameters',
@@ -76,6 +79,9 @@ class McpClient {
                         show: {
                             nodeMode: ['execute'],
                         },
+                    },
+                    typeOptions: {
+                        allowExpression: true,
                     },
                 },
                 {

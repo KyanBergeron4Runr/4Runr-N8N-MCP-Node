@@ -78,6 +78,9 @@ export class McpClient implements INodeType {
 						nodeMode: ['execute'],
 					},
 				},
+				typeOptions: {
+					allowExpression: true,
+				},
 			},
 			{
 				displayName: 'Tool Parameters',
@@ -90,6 +93,9 @@ export class McpClient implements INodeType {
 					show: {
 						nodeMode: ['execute'],
 					},
+				},
+				typeOptions: {
+					allowExpression: true,
 				},
 			},
 			{

@@ -23,7 +23,7 @@ class McpClient {
             },
             inputs: [],
             outputs: ["main" /* NodeConnectionType.Main */],
-            icon: 'file:images/n8n4Runr.png',
+            icon: 'file:images/n8n4Runr.svg',
             usableAsTool: true,
             credentials: [
                 {
